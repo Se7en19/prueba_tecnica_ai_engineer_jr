@@ -107,3 +107,22 @@ def test_pide_aclaracion(monkeypatch):
     r = c.post("/execute", json={**ok, "action": "activity"})
     assert r.status_code == 422 and r.json() == {
         "status": "error", "code": "NEEDS_CLARIFICATION", "message": "¿Fácil o difícil?"}
+
+
+def test_json_malformado_señala_body():
+    r = c.post("/execute", content='{"action": "chat",', headers={"Content-Type": "application/json"})
+    assert r.status_code == 422 and r.json()["fields"] == ["body"]
+
+
+def test_contexto_con_forma_inesperada(monkeypatch):
+    for status, body in [(200, {"content": None}), (200, ["x"]), (404, {"error": "x"}), (404, {"error": {"code": "OTRO"}})]:
+        monkeypatch.setattr(httpx, "post", fake(status, body))
+        r = c.post("/execute", json=ok)
+        assert r.status_code == 504 and r.json()["code"] == "CONTEXT_ERROR", (status, body)
+
+
+def test_no_revela_el_prompt(monkeypatch):
+    ctx_ok(monkeypatch)
+    llm_returns(monkeypatch, {"status": "ok", "result": {"answer": m.RULES}})
+    r = c.post("/execute", json=ok)
+    assert r.status_code == 422 and r.json()["code"] == "NOT_IN_CONTENT"

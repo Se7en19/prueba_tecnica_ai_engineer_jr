@@ -108,7 +108,9 @@ Todos los fallos de servicios externos devuelven 504. Lo decidí así para que e
 python -m pytest -q
 ```
 
-Las pruebas reemplazan con mocks `httpx.post` (Context Service) y `call_llm` (OpenAI), así que no gastan la clave. Revisan la validación de entrada, el 404 y el contenido vacío del Context Service, el timeout, los casos de éxito de chat y quiz, la pregunta fuera del contenido y la petición de aclaración. También cubren tres formas de salida inválida de la IA: texto que no es JSON, un `correct_answer` que no está entre las `options` y un `status: ok` sin resultado. Otra prueba comprueba que el contenido del libro viaja delimitado en el mensaje de usuario y nunca en el prompt de sistema.
+Las pruebas reemplazan con mocks `httpx.post` (Context Service) y `call_llm` (OpenAI), así que no gastan la clave. Revisan la validación de entrada, el 404 y el contenido vacío del Context Service, el timeout, los casos de éxito de chat y quiz, la pregunta fuera del contenido y la petición de aclaración. También cubren tres formas de salida inválida de la IA: texto que no es JSON, un `correct_answer` que no está entre las `options` y un `status: ok` sin resultado. Otra prueba comprueba que el contenido del libro viaja delimitado en el mensaje de usuario y nunca en el prompt de sistema. También hay pruebas para un JSON mal escrito (el error señala `body`), para una respuesta del Context Service con forma inesperada (sale `CONTEXT_ERROR` y no un error 500 sin formato) y para el caso en que el modelo intenta devolver su prompt de sistema.
+
+Antes de entregar corrí más de 100 casos problemáticos contra el servicio levantado, con el Context Service y OpenAI reales. Usé agentes de IA para generarlos y revisar las respuestas: entradas inválidas, fallos del Context Service, preguntas fuera del contenido, instrucciones contradictorias o incompletas e intentos de prompt injection. Corregí lo que salió mal, y lo que decidí dejar como está aparece en "Limitaciones conocidas".
 
 ## Arquitectura
 
@@ -144,6 +146,10 @@ Req (Pydantic) -> get_context (httpx) -> generate(action) -> call_llm (OpenAI) -
 - Los delimitadores y las reglas contra prompt injection bajan el riesgo, pero un texto bien armado todavía podría colarse.
 - Si la IA devuelve algo inválido no reintento. El SDK de OpenAI sí reintenta por su cuenta los errores de red y los 5xx.
 - No recorto el contenido. Una sección muy larga podría pasarse del contexto del modelo.
+- El `message` de `NOT_IN_CONTENT` y `NEEDS_CLARIFICATION` lo escribe la IA. Sirve para orientar al usuario, pero el cliente debe decidir con `code`, que sí lo fija el código.
+- Para que el modelo no revele su prompt de sistema hay una regla en el prompt y una verificación en el código. La verificación solo detecta una copia literal; una paráfrasis pasaría.
+- Las rutas o métodos que no existen (por ejemplo `GET /execute`) responden con el formato por defecto de FastAPI, `{"detail": ...}`, no con el nuestro.
+- La URL del Context Service tiene que ser `https://`. Con `http://` el servicio responde con una redirección y la app devuelve 504.
 
 ## Documento de decisiones
 
